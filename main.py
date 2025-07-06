@@ -21,9 +21,6 @@ def main():
 
     # Feature engineering
     sales_full, sales_b = engineer_features(sales_full, sales_b, enable=config.FEATURE_ENGINEERING)
-
-    visualize_all(sales_full, sales_b, promos.head(4), promos[promos["Period"] == "Promo5"].iloc[0],
-                  product_groups, item_clusters, store_clusters, config.FIGS_DIR, config.FEATURE_ENGINEERING)
     
     # Compute cluster lift (used by baseline forecaster)
     item_cluster_lift = sales_full.groupby(["ItemCluster", "Promotion"])["Quantity"] \
@@ -44,7 +41,7 @@ def main():
     )
     # Visual diagnostics
     visualize_all(sales_full, sales_b, promos.head(4), promo5, product_groups,
-                  item_clusters, store_clusters, config.FIGS_DIR, config.FEATURE_ENGINEERING)
+                  item_clusters, store_clusters, config.FIGS_DIR, model, config.MODEL_NAME, config.FEATURE_ENGINEERING)
 
 if __name__ == "__main__":
     main()

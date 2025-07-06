@@ -4,7 +4,7 @@ import seaborn as sns
 import pandas as pd
 import lightgbm as lgb
 
-def visualize_all(sales_full, sales_b, promos1to4, promo5, product_groups, item_clusters, store_clusters, figs_dir, FEATURE_ENGINEERING):
+def visualize_all(sales_full, sales_b, promos1to4, promo5, product_groups, item_clusters, store_clusters, figs_dir, model, model_name, FEATURE_ENGINEERING):
     print("\n" + "="*40)
     print("   📊 Visualizing Data...   ")
     print("="*40 + "\n")
@@ -13,10 +13,17 @@ def visualize_all(sales_full, sales_b, promos1to4, promo5, product_groups, item_
     # Plot 1: Total Sales Over Time
     def plot_sales_over_time():
         plt.figure(figsize=(14, 6))
-        plt.plot(sales_full.groupby("Date")["Quantity"].sum(), label="Train", color="blue")
-        plt.plot(sales_b.groupby("Date")["Quantity"].sum(), label="Test", color="orange")
+        sales_full_daily = sales_full.groupby("Date")["Quantity"].sum()
+        sales_b_daily = sales_b.groupby("Date")["Quantity"].sum()
+        sales_b_daily_pred = sales_b.groupby("Date")["PredictedQuantity"].sum()
+        plt.plot(sales_full_daily.index, sales_full_daily.values, label="Train (Jan - Aug)", color="steelblue")
+        plt.plot(sales_b_daily.index, sales_b_daily.values, label="Test (Sept - Dec)", color="darkorange")
+        plt.plot(sales_b_daily_pred.index, sales_b_daily_pred.values, label="Predicted Test (Sept - Dec)", color="seagreen", linestyle='--')
+        promo1to4_label_added = False  # flag to add label only once
         for _, promo in promos1to4.iterrows():
-            plt.axvspan(promo["StartDate"], promo["EndDate"], color='blue', alpha=0.2)
+            label = f"Promo 1-4 Period" if not promo1to4_label_added else None
+            plt.axvspan(promo["StartDate"], promo["EndDate"], color='blue', alpha=0.2, label=label)
+            promo1to4_label_added = True
         plt.axvspan(promo5["StartDate"], promo5["EndDate"], color='red', alpha=0.2)
         plt.title("Sales Quantity Over Time")
         plt.xlabel("Date"); plt.ylabel("Total Quantity")
@@ -32,19 +39,21 @@ def visualize_all(sales_full, sales_b, promos1to4, promo5, product_groups, item_
         plt.savefig(os.path.join(figs_dir, "item_clusters_distribution.png"))
 
     # Plot 3: Return Rate
-    def plot_return_rate():
+    def plot_return_rate(days_num = 50):
         if not FEATURE_ENGINEERING:
             return
         sales_full["TotalReturn"] = sales_full["Quantity"].apply(lambda x: -x if x < 0 else 0)
-        total_return = sales_full.groupby("PromoStartLag")["TotalReturn"].sum().iloc[:50]
+        total_return = sales_full.groupby("PromoStartLag")["TotalReturn"].sum().iloc[:days_num]
         plt.figure(figsize=(12, 6)); total_return.plot(kind='bar', color='#d95f02')
         plt.yscale("log"); plt.xlabel("Promo Start Lag (days)"); plt.ylabel("Total Return (log)")
+        plt.xticks(ticks=range(0, days_num-1, 5), labels=range(0, days_num-1, 5))
         plt.tight_layout(); plt.savefig(os.path.join(figs_dir, "total_return_rate.png"))
 
     # Cluster Visualization
     def plot_cluster_scatter(df, group, cluster_map):
         avg = df[df["Promotion"] == False].groupby(group)["Quantity"].mean().reset_index()
         avg["Cluster"] = avg[group].map(cluster_map)
+        avg = avg.sort_values("Quantity").reset_index(drop=True)
         q33, q66 = avg["Quantity"].quantile([0.33, 0.66])
         plt.figure(figsize=(10, 10))
         sns.scatterplot(x=range(len(avg)), y="Quantity", data=avg, hue="Cluster", palette="Set1")
@@ -61,7 +70,7 @@ def visualize_all(sales_full, sales_b, promos1to4, promo5, product_groups, item_
         merged["PromotionLift"] = merged["PromoAvg"] - merged["NonPromoAvg"]
         top = merged.sort_values("PromotionLift", ascending=False).head(20)
         plt.figure(figsize=(10, 10))
-        sns.barplot(data=top, x=col, y="PromotionLift", palette="viridis")
+        sns.barplot(data=top, x=col, y="PromotionLift", palette="viridis", order=top[col])
         plt.xticks(rotation=45); plt.tight_layout()
         plt.savefig(os.path.join(figs_dir, f"top_{col.lower()}_lift.png"))
 
@@ -91,5 +100,6 @@ def visualize_all(sales_full, sales_b, promos1to4, promo5, product_groups, item_
     store_cluster_lift = sales_full.groupby(["StoreCluster", "Promotion"])["Quantity"].mean().unstack().assign(Lift=lambda x: x[True] - x[False])
     plot_lift_by_cluster("Item", item_cluster_lift)
     plot_lift_by_cluster("Store", store_cluster_lift)
+    plot_feature_importance(model, model_name)
 
     return item_cluster_lift
